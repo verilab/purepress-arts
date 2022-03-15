@@ -1,1 +1,1 @@
-# PurePress SE
+# PurePress Arts
