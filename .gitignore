@@ -109,3 +109,4 @@ venv.bak/
 
 .vscode
 .idea
+/dev_inst*

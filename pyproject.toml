@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "purepress"
-version = "0.8.0"
+name = "purepress-se"
+version = "0.1.0"
 description = "A simple static blog generator."
 license = "MIT"
-authors = ["Richard Chien <richardchienthebest@gmail.com>"]
+authors = ["Richard Chien <stdrc@outlook.com>"]
 readme = "README.md"
-repository = "https://github.com/verilab/purepress"
+repository = "https://github.com/richardchien/purepress-se"
 keywords = ["Static Blog Generator", "Static Blog", "Blog", "Blog Engine"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -14,6 +14,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
 ]
+packages = [{ include = "purepress" }]
 
 [tool.poetry.scripts]
 purepress = "purepress.__main__:cli.main"
