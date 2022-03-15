@@ -16,9 +16,7 @@ from . import (
     static_folder,
     theme_static_folder,
     pages_folder,
-    posts_folder,
     raw_folder,
-    load_posts,
 )
 
 
@@ -39,48 +37,6 @@ def step(op_name: str):
 @click.version_option(version=__version__)
 def cli():
     pass
-
-
-DEFAULT_PUREPRESS_TOML = """\
-[site]
-title = "My Blog"
-subtitle = "Here is my blog"
-author = "My Name"
-timezone = "Asia/Shanghai"
-
-[config]
-posts_per_index_page = 5
-"""
-
-DEFAULT_POST_TEMPLATE = """\
----
-title: A demo {0}
----
-
-This is a demo {0}.
-"""
-
-
-@cli.command("init", short_help="Initialize an instance.")
-def init_command():
-    if os.listdir(root_folder):
-        echo_red(f'The instance folder "{root_folder}" is not empty')
-        exit(1)
-    with step("Creating folders"):
-        os.makedirs(posts_folder, exist_ok=True)
-        os.makedirs(pages_folder, exist_ok=True)
-        os.makedirs(static_folder, exist_ok=True)
-        os.makedirs(raw_folder, exist_ok=True)
-    with step("Creating default purepress.toml"):
-        with open(os.path.join(root_folder, "purepress.toml"), mode="w", encoding="utf-8") as f:
-            f.write(DEFAULT_PUREPRESS_TOML)
-    with step("Createing demo page"):
-        with open(os.path.join(pages_folder, "demo.md"), mode="w", encoding="utf-8") as f:
-            f.write(DEFAULT_POST_TEMPLATE.format("page"))
-    with step("Createing demo post"):
-        with open(os.path.join(posts_folder, "1970-01-01-demo.md"), mode="w", encoding="utf-8") as f:
-            f.write(DEFAULT_POST_TEMPLATE.format("post"))
-    echo_green("OK! Now you can install a theme and preview the site.")
 
 
 @cli.command("preview", short_help="Preview the site.")
@@ -125,7 +81,6 @@ def build(client):
     build_static_folder = os.path.join(build_folder, "static")
     build_static_theme_folder = os.path.join(build_static_folder, "theme")
     build_pages_folder = build_folder
-    build_posts_folder = os.path.join(build_folder, "post")
     build_index_page_folder = os.path.join(build_folder, "page")
 
     with step("Creating build folder"):
@@ -161,22 +116,6 @@ def build(client):
                 res = client.get(url)
                 with open(dst_path, "wb") as f:
                     f.write(res.data)
-
-    with app.test_request_context():
-        posts = load_posts(meta_only=True)
-
-    with step("Building posts"):
-        for post in posts:
-            filename = post["filename"]
-            year, month, day, name = os.path.splitext(filename)[0].split("-", maxsplit=3)
-            dst_dirname = os.path.join(build_posts_folder, year, month, day, name)
-            os.makedirs(dst_dirname, exist_ok=True)
-            dst_path = os.path.join(dst_dirname, "index.html")
-            with app.test_request_context():
-                url = url_for("post", year=year, month=month, day=day, name=name)
-            res = client.get(url)
-            with open(dst_path, "wb") as f:
-                f.write(res.data)
 
     with step("Building index"):
         with app.test_request_context():

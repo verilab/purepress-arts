@@ -2,7 +2,8 @@ import os
 import re
 import functools
 import xml.etree.ElementTree as etree
-from datetime import date, datetime, timedelta, timezone
+from os import path
+from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional
 
 import yaml
@@ -15,7 +16,6 @@ from flask import (
     Flask,
     render_template,
     abort,
-    redirect,
     url_for,
     Blueprint,
     send_from_directory,
@@ -24,16 +24,17 @@ from werkzeug.security import safe_join
 
 # calculate some folder path
 root_folder = os.getenv("PUREPRESS_INSTANCE", os.getcwd())
-static_folder = os.path.join(root_folder, "static")
-template_folder = os.path.join(root_folder, "theme", "templates")
-theme_static_folder = os.path.join(root_folder, "theme", "static")
-posts_folder = os.path.join(root_folder, "posts")
-pages_folder = os.path.join(root_folder, "pages")
-raw_folder = os.path.join(root_folder, "raw")
+static_folder = path.join(root_folder, "static")
+template_folder = path.join(root_folder, "theme", "templates")
+theme_static_folder = path.join(root_folder, "theme", "static")
+works_folder = path.join(root_folder, "works")
+books_folder = path.join(root_folder, "books")
+pages_folder = path.join(root_folder, "pages")
+raw_folder = path.join(root_folder, "raw")
 
 # load configurations
 try:
-    purepress_config = toml.load(os.path.join(root_folder, "purepress.toml"))
+    purepress_config = toml.load(path.join(root_folder, "purepress.toml"))
 except FileNotFoundError:
     purepress_config = {"site": {}, "config": {}}
 site, config = purepress_config["site"], purepress_config["config"]
@@ -125,72 +126,51 @@ def load_entry(fullpath: str, *, meta_only: bool) -> Optional[Dict[str, Any]]:
                 frontmatter, remained = remained.split("---", maxsplit=1)
                 content = remained.strip()
             else:
-                content = "\n\n".join([firstline, remained])
+                content = "\n\n".join([firstline, remained]).strip()
     except FileNotFoundError:
         return None
     # construct the entry object
     entry: Dict[str, Any] = yaml.load(frontmatter, Loader=yaml.FullLoader) or {}
+    entry["file"] = fullpath
+    # figure out the title
+    if "title" not in entry:
+        if content.startswith("# "):
+            title, content = content.split("\n", maxsplit=1)
+            entry["title"] = title[2:].strip()
+            content = content.strip()
+        else:
+            entry["title"] = " ".join(path.splitext(path.basename(fullpath))[0].split("-"))
     # ensure datetime fields are real datetime
     for k in ("created", "updated"):
         if isinstance(entry.get(k), date) and not isinstance(entry.get(k), datetime):
             entry[k] = datetime.combine(entry[k], datetime.min.time())
-    # ensure tags and categories are lists
-    for k in ("categories", "tags"):
-        if isinstance(entry.get(k), str):
-            entry[k] = [entry[k]]
     # if should, convert markdown content to html
     if not meta_only:
         entry["content"] = markdown_convert(content)
     return entry
 
 
-def load_post(filename: str, *, meta_only: bool = False) -> Optional[Dict[str, Any]]:
-    # parse the filename (yyyy-MM-dd-post-title.md)
+def load_entries(dirpath: str, *, meta_only: bool) -> List[Dict[str, Any]]:
     try:
-        year, month, day, name = os.path.splitext(filename)[0].split("-", maxsplit=3)
-        year, month, day = int(year), int(month), int(day)
-    except ValueError:
-        return None
-    # load post entry
-    fullpath = safe_join(posts_folder, filename)
-    if fullpath is None:
-        return None
-    post = load_entry(fullpath, meta_only=meta_only)
-    if post is None:  # note that post may be {}
-        return None
-    # add some fields
-    post["filename"] = filename
-    post["url"] = url_for(
-        "post",
-        year=f"{year:0>4d}",
-        month=f"{month:0>2d}",
-        day=f"{day:0>2d}",
-        name=name,
-    )
-    # ensure *title* field
-    if "title" not in post:
-        post["title"] = " ".join(name.split("-"))
-    # ensure *created* field
-    if "created" not in post:
-        post["created"] = datetime(year=year, month=month, day=day)
-    return post
-
-
-def load_posts(*, meta_only: bool = False) -> List[Dict[str, Any]]:
-    try:
-        post_files = os.listdir(posts_folder)
+        entry_files = os.listdir(dirpath)
     except FileNotFoundError:
         return []
 
-    def gen_posts():
-        for post_file in post_files:
-            if not post_file.endswith(".md"):
+    def gen_entries():
+        for entry_file in entry_files:
+            if not entry_file.endswith(".md"):
                 continue
-            yield load_post(post_file, meta_only=meta_only)
+            entry_fullpath = safe_join(dirpath, entry_file)
+            if not entry_fullpath:
+                continue
+            entry = load_entry(entry_fullpath, meta_only=meta_only)
+            if entry is None:
+                continue
+            yield entry
 
-    posts = list(filter(lambda x: x and not x.get("hide", False), gen_posts()))
-    posts.sort(key=lambda x: x.get("created"), reverse=True)
-    return posts
+    entries = list(filter(lambda x: x and not x.get("hide", False), gen_entries()))
+    entries.sort(key=lambda x: x.get("created", datetime.min), reverse=True)
+    return entries
 
 
 def load_page(rel_url: str) -> Optional[Dict[str, Any]]:
@@ -199,10 +179,10 @@ def load_page(rel_url: str) -> Optional[Dict[str, Any]]:
     fullpath = safe_join(pages_folder, *pathnames)
     if fullpath is None:
         return None
-    if fullpath.endswith(os.path.sep):  # /foo/bar/
-        fullpath = os.path.join(fullpath, "index.md")
+    if fullpath.endswith(path.sep):  # /foo/bar/
+        fullpath = path.join(fullpath, "index.md")
     elif fullpath.endswith(".html"):  # /foo/bar.html
-        fullpath = os.path.splitext(fullpath)[0] + ".md"
+        fullpath = path.splitext(fullpath)[0] + ".md"
     else:  # /foo/bar
         fullpath += ".md"
     # load page entry
@@ -210,10 +190,6 @@ def load_page(rel_url: str) -> Optional[Dict[str, Any]]:
     if page is None:
         return None
     page["url"] = url_for("page", rel_url=rel_url)
-    # ensure *title* field
-    if "title" not in page:
-        name = os.path.splitext(os.path.basename(fullpath))[0]
-        page["title"] = " ".join(name.split("-"))
     return page
 
 
@@ -236,53 +212,47 @@ def templated(template: str) -> Callable:
 
 @app.route("/")
 def index():
-    # the logic is the same as /page/1/, just reuse it
-    return index_page(1, from_index=True)
+    return works(from_index=True)
 
 
-@app.route("/page/<int:page_num>/")
-@templated("index")
-def index_page(page_num, *, from_index: bool = False):
-    # do some calculation and handle unexpected cases
-    posts_per_page = config["posts_per_index_page"]
-    posts = load_posts(meta_only=True)  # just load meta data quickly
-    post_count = len(posts)
-    page_count = (post_count + posts_per_page - 1) // posts_per_page
-    if page_num == 1 and not from_index:
-        # redirect /page/1/ to /
-        return redirect(url_for("index"), 302)
-    if page_num < 1 or page_num > page_count:
+@app.route("/works/")
+def works(*, from_index: bool = False):
+    return gallery(works_folder, "work", "" if from_index else "Works")
+
+
+@app.route("/works/<name>/")
+def work(name: str):
+    return detail(works_folder, "work", name)
+
+
+@app.route("/books/")
+def books():
+    return gallery(works_folder, "book", "Books")
+
+
+@app.route("/books/<name>/")
+def book(name: str):
+    return detail(works_folder, "book", name)
+
+
+@templated("gallery")
+def gallery(dirpath: str, type_: str, title: str):
+    entries = load_entries(dirpath, meta_only=True)
+    for entry in entries:
+        entry["url"] = url_for(type_, name=path.splitext(path.basename(entry["file"]))[0])
+    return {"entries": entries, "title": title}
+
+
+@templated("detail")
+def detail(dirpath: str, type_: str, name: str):
+    entry_file = safe_join(dirpath, f"{name}.md")
+    if not entry_file:
         abort(404)
-
-    # prepare pager links
-    prev_url, next_url = None, None
-    if page_num == 2:
-        prev_url = url_for("index")
-    elif page_num > 2:
-        prev_url = url_for("index_page", page_num=page_num - 1)
-    if page_num < page_count:
-        next_url = url_for("index_page", page_num=page_num + 1)
-
-    # load posts in the specified range
-    begin = (page_num - 1) * posts_per_page
-    end = min(post_count, begin + posts_per_page)
-    posts_to_render = []
-    for i in range(begin, end):
-        posts_to_render.append(load_post(posts[i]["filename"]))
-    return {
-        "entries": posts_to_render,
-        "pager": {"prev_url": prev_url, "next_url": next_url},
-    }
-
-
-@app.route("/post/<year>/<month>/<day>/<name>/")
-@templated("post")
-def post(year: str, month: str, day: str, name: str):
-    # use secure_filename to avoid filename attacks
-    post = load_post(f"{year}-{month}-{day}-{name}.md")
-    if not post:
+    entry = load_entry(entry_file, meta_only=False)
+    if entry is None:
         abort(404)
-    return {"entry": post}
+    entry["url"] = url_for(type_, name=path.splitext(path.basename(entry["file"]))[0])
+    return {"entry": entry}
 
 
 @app.route("/<path:rel_url>")
