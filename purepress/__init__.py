@@ -6,7 +6,6 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import yaml
-import pytz
 import toml
 import markdown.extensions
 import markdown.treeprocessors
@@ -20,12 +19,8 @@ from flask import (
     url_for,
     Blueprint,
     send_from_directory,
-    request,
-    make_response,
 )
 from werkzeug.security import safe_join
-from feedgen.feed import FeedGenerator
-from html_toc import HtmlTocParser
 
 # calculate some folder path
 root_folder = os.getenv("PUREPRESS_INSTANCE", os.getcwd())
@@ -119,7 +114,7 @@ def inject_objects() -> Dict[str, Any]:
     return {"global": {"site": site, "config": config}}
 
 
-def load_entry(fullpath: str, *, meta_only: bool, parse_toc: bool) -> Optional[Dict[str, Any]]:
+def load_entry(fullpath: str, *, meta_only: bool) -> Optional[Dict[str, Any]]:
     # read frontmatter and content
     frontmatter, content = "", ""
     try:
@@ -146,17 +141,10 @@ def load_entry(fullpath: str, *, meta_only: bool, parse_toc: bool) -> Optional[D
     # if should, convert markdown content to html
     if not meta_only:
         entry["content"] = markdown_convert(content)
-        if parse_toc:
-            parser = HtmlTocParser()
-            parser.feed(entry["content"])
-            entry["content"] = parser.html
-            depth = entry.get("toc_depth", config.get("toc_depth")) or 0
-            entry["toc"] = parser.toc(depth=depth)
-            entry["toc_html"] = parser.toc_html(depth=depth)
     return entry
 
 
-def load_post(filename: str, *, meta_only: bool = False, parse_toc: bool = False) -> Optional[Dict[str, Any]]:
+def load_post(filename: str, *, meta_only: bool = False) -> Optional[Dict[str, Any]]:
     # parse the filename (yyyy-MM-dd-post-title.md)
     try:
         year, month, day, name = os.path.splitext(filename)[0].split("-", maxsplit=3)
@@ -167,7 +155,7 @@ def load_post(filename: str, *, meta_only: bool = False, parse_toc: bool = False
     fullpath = safe_join(posts_folder, filename)
     if fullpath is None:
         return None
-    post = load_entry(fullpath, meta_only=meta_only, parse_toc=parse_toc)
+    post = load_entry(fullpath, meta_only=meta_only)
     if post is None:  # note that post may be {}
         return None
     # add some fields
@@ -205,7 +193,7 @@ def load_posts(*, meta_only: bool = False) -> List[Dict[str, Any]]:
     return posts
 
 
-def load_page(rel_url: str, *, parse_toc: bool = False) -> Optional[Dict[str, Any]]:
+def load_page(rel_url: str) -> Optional[Dict[str, Any]]:
     # convert relative url to full file path
     pathnames = rel_url.split("/")
     fullpath = safe_join(pages_folder, *pathnames)
@@ -218,7 +206,7 @@ def load_page(rel_url: str, *, parse_toc: bool = False) -> Optional[Dict[str, An
     else:  # /foo/bar
         fullpath += ".md"
     # load page entry
-    page = load_entry(fullpath, meta_only=False, parse_toc=parse_toc)
+    page = load_entry(fullpath, meta_only=False)
     if page is None:
         return None
     page["url"] = url_for("page", rel_url=rel_url)
@@ -291,37 +279,16 @@ def index_page(page_num, *, from_index: bool = False):
 @templated("post")
 def post(year: str, month: str, day: str, name: str):
     # use secure_filename to avoid filename attacks
-    post = load_post(f"{year}-{month}-{day}-{name}.md", parse_toc=True)
+    post = load_post(f"{year}-{month}-{day}-{name}.md")
     if not post:
         abort(404)
     return {"entry": post}
 
 
-@app.route("/archive/")
-@templated("archive")
-def archive():
-    posts = load_posts(meta_only=True)
-    return {"entries": posts, "archive": {"type": "Archive", "name": "All"}}
-
-
-@app.route("/category/<name>/")
-@templated("archive")
-def category(name: str):
-    posts = list(filter(lambda p: name in p.get("categories", []), load_posts(meta_only=True)))
-    return {"entries": posts, "archive": {"type": "Category", "name": name}}
-
-
-@app.route("/tag/<name>/")
-@templated("archive")
-def tag(name: str):
-    posts = list(filter(lambda p: name in p.get("tags", []), load_posts(meta_only=True)))
-    return {"entries": posts, "archive": {"type": "Tag", "name": name}}
-
-
 @app.route("/<path:rel_url>")
 @templated("page")
 def page(rel_url: str):
-    page = load_page(rel_url, parse_toc=True)
+    page = load_page(rel_url)
     if not page:
         if rel_url.endswith("/"):
             rel_url += "/index.html"
@@ -333,51 +300,3 @@ def page(rel_url: str):
 @app.route("/404.html")
 def page_not_found(e=None):
     return render_template("404.html"), 404
-
-
-def s2tz(tz_str):
-    m = re.match(r"UTC([+|-]\d{1,2}):(\d{2})", tz_str)
-    if m:  # in format 'UTC±[hh]:[mm]'
-        delta_h = int(m.group(1))
-        delta_m = int(m.group(2)) if delta_h >= 0 else -int(m.group(2))
-        return timezone(timedelta(hours=delta_h, minutes=delta_m))
-    try:  # in format 'Asia/Shanghai'
-        return pytz.timezone(tz_str)
-    except pytz.UnknownTimeZoneError:
-        return None
-
-
-@app.route("/feed.xml")
-def feed():
-    root_url = request.url_root.rstrip("/")
-    home_full_url = root_url + url_for("index")
-    feed_full_url = root_url + url_for("feed")
-    site_tz = s2tz(site.get("timezone", "")) or timezone(timedelta())
-    # set feed info
-    feed_gen = FeedGenerator()
-    feed_gen.id(home_full_url)
-    feed_gen.title(site.get("title", ""))
-    feed_gen.subtitle(site.get("subtitle", ""))
-    if "author" in site:
-        feed_gen.author(name=site["author"])
-    feed_gen.link(href=home_full_url, rel="alternate")
-    feed_gen.link(href=feed_full_url, rel="self")
-    # add feed entries
-    posts = load_posts(meta_only=True)[:10]
-    for i in range(len(posts)):
-        p = load_post(posts[i]["filename"])
-        if not p:
-            continue
-        feed_entry = feed_gen.add_entry()
-        feed_entry.id(root_url + p["url"])
-        feed_entry.link(href=root_url + p["url"])
-        feed_entry.title(p["title"])
-        feed_entry.content(p["content"], type="CDATA")
-        feed_entry.published(p["created"].replace(tzinfo=site_tz))
-        feed_entry.updated(p.get("updated", p["created"]).replace(tzinfo=site_tz))
-        if "author" in p:
-            feed_entry.author(name=p["author"])
-    # make http response
-    resp = make_response(feed_gen.rss_str(pretty=True))
-    resp.content_type = "application/rss+xml"
-    return resp

@@ -126,9 +126,6 @@ def build(client):
     build_static_theme_folder = os.path.join(build_static_folder, "theme")
     build_pages_folder = build_folder
     build_posts_folder = os.path.join(build_folder, "post")
-    build_categories_folder = os.path.join(build_folder, "category")
-    build_tags_folder = os.path.join(build_folder, "tag")
-    build_archive_folder = os.path.join(build_folder, "archive")
     build_index_page_folder = os.path.join(build_folder, "page")
 
     with step("Creating build folder"):
@@ -181,36 +178,6 @@ def build(client):
             with open(dst_path, "wb") as f:
                 f.write(res.data)
 
-    with step("Building categories"):
-        categories = set(functools.reduce(lambda c, p: c + p.get("categories", []), posts, []))
-        for category in categories:
-            category_folder = os.path.join(build_categories_folder, category)
-            os.makedirs(category_folder, exist_ok=True)
-            with app.test_request_context():
-                url = url_for("category", name=category)
-            res = client.get(url)
-            with open(os.path.join(category_folder, "index.html"), "wb") as f:
-                f.write(res.data)
-
-    with step("Building tags"):
-        tags = set(functools.reduce(lambda t, p: t + p.get("tags", []), posts, []))
-        for tag in tags:
-            tag_folder = os.path.join(build_tags_folder, tag)
-            os.makedirs(tag_folder, exist_ok=True)
-            with app.test_request_context():
-                url = url_for("tag", name=tag)
-            res = client.get(url)
-            with open(os.path.join(tag_folder, "index.html"), "wb") as f:
-                f.write(res.data)
-
-    with step("Building archive"):
-        os.makedirs(build_archive_folder, exist_ok=True)
-        with app.test_request_context():
-            url = url_for("archive")
-        res = client.get(url)
-        with open(os.path.join(build_archive_folder, "index.html"), "wb") as f:
-            f.write(res.data)
-
     with step("Building index"):
         with app.test_request_context():
             url = url_for("index")
@@ -227,13 +194,6 @@ def build(client):
             with open(os.path.join(page_folder, "index.html"), "wb") as f:
                 f.write(res.data)
             page_num += 1
-
-    with step("Building feed"):
-        with app.test_request_context():
-            url = url_for("feed")
-        res = client.get(url)
-        with open(os.path.join(build_folder, "feed.xml"), "wb") as f:
-            f.write(res.data)
 
     with step("Building 404"):
         with app.test_request_context():
