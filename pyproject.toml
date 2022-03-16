@@ -5,7 +5,7 @@ description = "PurePress for Arts."
 license = "MIT"
 authors = ["Richard Chien <stdrc@outlook.com>"]
 readme = "README.md"
-repository = "https://github.com/richardchien/purepress-se"
+repository = "https://github.com/richardchien/purepress-arts"
 keywords = ["Static Blog Generator", "Static Blog", "Blog", "Blog Engine"]
 classifiers = [
     "Development Status :: 4 - Beta",
