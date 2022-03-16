@@ -227,12 +227,12 @@ def work(name: str):
 
 @app.route("/books/")
 def books():
-    return gallery(works_folder, "book", "Books")
+    return gallery(books_folder, "book", "Books")
 
 
 @app.route("/books/<name>/")
 def book(name: str):
-    return detail(works_folder, "book", name)
+    return detail(books_folder, "book", name)
 
 
 @templated("gallery")
