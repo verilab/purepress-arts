@@ -210,49 +210,47 @@ def templated(template: str) -> Callable:
     return decorator
 
 
-@app.route("/")
-def index():
-    return works(from_index=True)
+def index_view_for(title: str, folder: str, detail_endpoint: str, index_template: str):
+    def index_view():
+        entries = load_entries(folder, meta_only=True)
+        for entry in entries:
+            entry["url"] = url_for(detail_endpoint, name=path.splitext(path.basename(entry["file"]))[0])
+        return {"entries": entries, "title": title}
+
+    return templated(index_template)(index_view)
 
 
-@app.route("/works/")
-def works(*, from_index: bool = False):
-    return gallery(works_folder, "work", "" if from_index else "Works")
+def detail_view_for(folder: str, detail_endpoint: str, detail_template: str):
+    def detail_view(name):
+        entry_file = safe_join(folder, f"{name}.md")
+        if not entry_file:
+            abort(404)
+        entry = load_entry(entry_file, meta_only=False)
+        if entry is None:
+            abort(404)
+        entry["url"] = url_for(detail_endpoint, name=path.splitext(path.basename(entry["file"]))[0])
+        return {"entry": entry}
+
+    return templated(detail_template)(detail_view)
 
 
-@app.route("/works/<name>/")
-def work(name: str):
-    return detail(works_folder, "work", name)
-
-
-@app.route("/books/")
-def books():
-    return gallery(books_folder, "book", "Books")
-
-
-@app.route("/books/<name>/")
-def book(name: str):
-    return detail(books_folder, "book", name)
-
-
-@templated("gallery")
-def gallery(dirpath: str, type_: str, title: str):
-    entries = load_entries(dirpath, meta_only=True)
-    for entry in entries:
-        entry["url"] = url_for(type_, name=path.splitext(path.basename(entry["file"]))[0])
-    return {"entries": entries, "title": title}
-
-
-@templated("detail")
-def detail(dirpath: str, type_: str, name: str):
-    entry_file = safe_join(dirpath, f"{name}.md")
-    if not entry_file:
-        abort(404)
-    entry = load_entry(entry_file, meta_only=False)
-    if entry is None:
-        abort(404)
-    entry["url"] = url_for(type_, name=path.splitext(path.basename(entry["file"]))[0])
-    return {"entry": entry}
+for mapping in config.get("mappings", []):
+    title = mapping["title"]
+    path_ = mapping["path"]
+    assert path_.startswith("/")
+    folder = path.join(root_folder, path_.lstrip("/"))
+    index_url = mapping.get("index_url", path_).rstrip("/") + "/"
+    assert index_url.startswith("/")
+    detail_url = mapping.get("detail_url", path_).rstrip("/") + "/"
+    assert detail_url.startswith("/")
+    index_template = mapping["index_template"]
+    detail_template = mapping["detail_template"]
+    index_endpoint = index_url
+    detail_endpoint = f"{detail_url}detail"
+    index_view_func = index_view_for(title, folder, detail_endpoint, index_template)
+    app.add_url_rule(f"{index_url}", index_endpoint, index_view_func, methods=["GET"])
+    detail_view_func = detail_view_for(folder, detail_endpoint, detail_template)
+    app.add_url_rule(f"{detail_url}<name>/", detail_endpoint, detail_view_func, methods=["GET"])
 
 
 @app.route("/<path:rel_url>")
