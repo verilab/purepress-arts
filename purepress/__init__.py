@@ -261,7 +261,13 @@ def page(rel_url: str):
         if rel_url.endswith("/"):
             rel_url += "/index.html"
         return send_from_directory(raw_folder, rel_url)
-    return {"entry": page}
+    context = {"entry": page}
+    template = page.get("template")
+    if template:
+        if not template.endswith(".html"):
+            template += ".html"
+        return render_template([f"custom/{template}", template], **context)
+    return context
 
 
 @app.errorhandler(404)
