@@ -12,13 +12,12 @@ from flask import url_for
 from .__meta__ import __version__
 from . import (
     app,
+    config,
     load_entries,
     root_folder,
     static_folder,
     theme_static_folder,
     pages_folder,
-    works_folder,
-    books_folder,
     raw_folder,
 )
 
@@ -86,8 +85,6 @@ def build(get):
     build_static_folder = os.path.join(build_folder, "static")
     build_static_theme_folder = os.path.join(build_static_folder, "theme")
     build_pages_folder = build_folder
-    build_works_folder = os.path.join(build_folder, "works")
-    build_books_folder = os.path.join(build_folder, "books")
 
     with step("Creating build folder"):
         if os.path.isdir(build_folder):
@@ -123,35 +120,43 @@ def build(get):
                 with open(dst_path, "wb") as f:
                     f.write(res.data)
 
-    with app.test_request_context():
-        works = load_entries(works_folder, meta_only=True)
-        books = load_entries(books_folder, meta_only=True)
+    for mapping in config.get("mappings", []):
+        title = mapping["title"]
+        path_ = mapping["path"]
+        assert path_.startswith("/")
+        folder = os.path.join(root_folder, path_.lstrip("/"))
+        index_url = mapping.get("index_url", path_).rstrip("/") + "/"
+        assert index_url.startswith("/")
+        detail_url = mapping.get("detail_url", path_).rstrip("/") + "/"
+        assert detail_url.startswith("/")
+        index_endpoint = index_url
+        detail_endpoint = f"{detail_url}detail"
 
-    with step("Building works and books"):
-        for type_, entries, folder in (("work", works, build_works_folder), ("book", books, build_books_folder)):
-            os.makedirs(folder, exist_ok=True)
+        with step(f'Building custom mapping "{title}"'):
+            build_index_folder = os.path.join(build_pages_folder, index_url.lstrip("/"))
+            build_detail_folder = os.path.join(build_pages_folder, detail_url.lstrip("/"))
+            os.makedirs(build_index_folder, exist_ok=True)
+            os.makedirs(build_detail_folder, exist_ok=True)
+
             with app.test_request_context():
-                url = url_for(f"{type_}s")
+                entries = load_entries(folder, meta_only=True)
+
+            with app.test_request_context():
+                url = url_for(index_endpoint)
             res = get(url)
-            with open(os.path.join(folder, "index.html"), "wb") as f:
+            with open(os.path.join(build_index_folder, "index.html"), "wb") as f:
                 f.write(res.data)
+
             for entry in entries:
                 filename = os.path.splitext(os.path.basename(entry["file"]))[0]
-                dst_dirname = os.path.join(folder, filename)
+                dst_dirname = os.path.join(build_detail_folder, filename)
                 os.makedirs(dst_dirname, exist_ok=True)
                 dst_path = os.path.join(dst_dirname, "index.html")
                 with app.test_request_context():
-                    url = url_for(type_, name=filename)
+                    url = url_for(detail_endpoint, name=filename)
                 res = get(url)
                 with open(dst_path, "wb") as f:
                     f.write(res.data)
-
-    with step("Building index"):
-        with app.test_request_context():
-            url = url_for("index")
-        res = get(url)
-        with open(os.path.join(build_folder, "index.html"), "wb") as f:
-            f.write(res.data)
 
     with step("Building 404"):
         with app.test_request_context():

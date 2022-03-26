@@ -27,8 +27,6 @@ root_folder = os.getenv("PUREPRESS_INSTANCE", os.getcwd())
 static_folder = path.join(root_folder, "static")
 template_folder = path.join(root_folder, "theme", "templates")
 theme_static_folder = path.join(root_folder, "theme", "static")
-works_folder = path.join(root_folder, "works")
-books_folder = path.join(root_folder, "books")
 pages_folder = path.join(root_folder, "pages")
 raw_folder = path.join(root_folder, "raw")
 
