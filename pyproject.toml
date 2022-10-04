@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "purepress-arts"
-version = "0.3.0"
+version = "0.4.0"
 description = "PurePress for Arts."
 license = "MIT"
 authors = ["Richard Chien <stdrc@outlook.com>"]
