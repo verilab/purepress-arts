@@ -168,6 +168,7 @@ def load_entries(dirpath: str, *, meta_only: bool) -> List[Dict[str, Any]]:
             yield entry
 
     entries = list(filter(lambda x: x and not x.get("hide", False), gen_entries()))
+    entries.sort(key=lambda x: x.get("created", datetime.min), reverse=True)
     entries.sort(key=lambda x: x.get("order", sys.maxsize))
     return entries
 
