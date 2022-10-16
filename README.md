@@ -8,3 +8,4 @@
 Cases:
 
 - [Amanda Ninji Arts](https://www.amandaninjiarts.com)
+- [Shot By RC](https://shots.stdrc.cc) ([GitHub](https://github.com/richardchien/shot-by-rc))
